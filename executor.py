@@ -212,7 +212,7 @@ def fetch_next_ui_tree(
     depth: int = 1,
 ) -> tuple:
     """
-    Retrieve the next UI tree based on Jev's *next_tree_action* choice.
+    Retrieve the next UI tree based on Jev's next_tree_action choice.
 
     Returns:
         (ui_tree_dict, root_control)  – the new tree and the live control it
