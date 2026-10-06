@@ -59,28 +59,50 @@ log = logging.getLogger("executor")
 def _resolve_control(target_node: Optional[Dict[str, Any]]) -> Optional[auto.Control]:
     """
     Turn a target_node dict (from Jev's decision) back into a live
-    UIA Control by matching its native window handle.
+    UIA Control by matching its cached control object, native window handle,
+    or searching by AutomationId/Name.
     """
     if target_node is None:
         return None
 
-    handle_hex = target_node.get("handle", "0x0")
-    if handle_hex and handle_hex != "0x0":
-        hwnd = int(handle_hex, 16)
+    # 1. Cached live control object from tree extraction (fastest & most accurate)
+    ctrl = target_node.get("_control")
+    if ctrl is not None:
         try:
-            ctrl = auto.ControlFromHandle(hwnd)
-            if ctrl and ctrl.Exists(maxSearchSeconds=1):
+            if ctrl.Exists(maxSearchSeconds=0.5):
                 return ctrl
         except Exception:
             pass
 
-    # Fallback – search by name + control type at depth 1
-    name = target_node.get("name", "")
+    # 2. Match native window handle (e.g. for top-level windows)
+    handle_hex = target_node.get("handle", "0x0")
     ctype = target_node.get("control_type", "")
+    if handle_hex and handle_hex != "0x0":
+        hwnd = int(handle_hex, 16)
+        try:
+            ctrl = auto.ControlFromHandle(hwnd)
+            if ctrl and ctrl.Exists(maxSearchSeconds=0.5):
+                if not ctype or ctrl.ControlTypeName == ctype:
+                    return ctrl
+        except Exception:
+            pass
+
+    # 3. Search by AutomationId
+    auto_id = target_node.get("automation_id", "")
+    if auto_id:
+        try:
+            ctrl = auto.Control(searchDepth=6, AutomationId=auto_id)
+            if ctrl.Exists(maxSearchSeconds=0.5):
+                return ctrl
+        except Exception:
+            pass
+
+    # 4. Search by Name
+    name = target_node.get("name", "")
     if name:
         try:
-            ctrl = auto.Control(searchDepth=2, Name=name)
-            if ctrl.Exists(maxSearchSeconds=1):
+            ctrl = auto.Control(searchDepth=6, Name=name)
+            if ctrl.Exists(maxSearchSeconds=0.5):
                 return ctrl
         except Exception:
             pass
