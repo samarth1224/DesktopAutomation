@@ -120,7 +120,7 @@ def execute_action(action: str, target_node: Optional[Dict[str, Any]], action_pa
             except Exception:
                 pass
             try:
-                ctrl.Click(simulateMove=False)
+                ctrl.Click(simulateMove=True)
             except Exception:
                 pass
             time.sleep(UI_SETTLE_DELAY)
@@ -164,18 +164,6 @@ def execute_action(action: str, target_node: Optional[Dict[str, Any]], action_pa
             time.sleep(UI_SETTLE_DELAY)
             return True
 
-        elif action == "keyboard_shortcut":
-            keys = params.get("keys", "")
-            log.info(f"⌨ Action: keyboard_shortcut → '{keys}'")
-            # Ensure target is focused first
-            try:
-                ctrl.SetFocus()
-            except Exception:
-                pass
-            if keys:
-                auto.SendKeys(keys, interval=0.04)
-            time.sleep(UI_SETTLE_DELAY)
-            return True
 
         elif action == "toggle":
             log.info(f"☑ Action: toggle → '{ctrl.Name}'")
@@ -308,9 +296,9 @@ def run_automation(
         log.info(f"📍 Step {step}/{max_steps}")
         log.info(f"{'─' * 50}")
 
-        if verbose:
-            log.info(f"UI Tree root: {ui_tree.get('control_type')} \"{ui_tree.get('name', '')}\" "
-                      f"| children: {len(ui_tree.get('children', []))}")
+        # Structured display of the UI Tree being sent to Jev
+        tree_text = format_tree_text(ui_tree) if ui_tree else "(empty tree)"
+        log.info(f"🌳 UI Tree (Sending to Jev):\n{tree_text}\n")
 
         # ----- 1. Ask Jev for a decision -----
         try:
@@ -334,7 +322,15 @@ def run_automation(
         next_tree_action = decision.get("next_ui_tree", "none")
         goal_complete = decision.get("is_goal_complete", False)
 
-        log.info(f"  ➤ Target   : {target_id}")
+        target_name = (target_node.get("name") or "").strip() if isinstance(target_node, dict) else ""
+        if target_name:
+            target_display = f"{target_id} ('{target_name}')"
+        elif isinstance(target_node, dict) and target_node.get("control_type"):
+            target_display = f"{target_id} ({target_node.get('control_type')})"
+        else:
+            target_display = target_id
+
+        log.info(f"  ➤ Target   : {target_display}")
         log.info(f"  ➤ Action   : {action}")
         log.info(f"  ➤ Next Tree: {next_tree_action}")
         log.info(f"  ➤ Goal Done: {goal_complete}  (noul={result.get('noul_probability', '?')})")
@@ -342,6 +338,7 @@ def run_automation(
         step_record = {
             "step": step,
             "target_id": target_id,
+            "target_name": target_name,
             "action": action,
             "next_ui_tree": next_tree_action,
             "is_goal_complete": goal_complete,
@@ -374,6 +371,8 @@ def run_automation(
             current_root_control=root_control,
             depth=depth,
         )
+
+
 
     # --- End of loop ---
     if not goal_complete:
