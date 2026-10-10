@@ -138,13 +138,28 @@ def execute_action(action: str, target_node: Optional[Dict[str, Any]], action_pa
             log.info(f"🔲 Action: focus_window → '{ctrl.Name}'")
             # Try SetForeground first; fall back to clicking the control
             try:
+                if ctrl.ControlType == auto.ControlType.WindowControl:
+                    if auto.IsIconic(ctrl.NativeWindowHandle):
+                        ctrl.ShowWindow(auto.SW.ShowNormal)
+                        time.sleep(0.3)
+                    ctrl.SetActive()
+                    time.sleep(0.3)
+                    return True
+            except Exception as e:
+                print(e)
+
+            try:
                 ctrl.SetFocus()
-            except Exception:
-                pass
+            
+            except Exception as e:
+                print(e)
+            
             try:
                 ctrl.Click(simulateMove=True)
-            except Exception:
-                pass
+            
+            except Exception as e:
+                print(e)
+            
             time.sleep(UI_SETTLE_DELAY)
             return True
 
