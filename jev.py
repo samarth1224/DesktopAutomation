@@ -71,6 +71,7 @@ You are responsible for automating the Windows Desktop by:
 3. Outputting probabilities for WHAT ACTION to execute on the selected target from predefined action choices (focus_window, click, double_click, set_text, toggle, wait_for_ui, finish_task).
 4. Deciding WHAT UI TREE representation you want next from predefined tree choices (inspect_selected_window, refresh_current_window, inspect_desktop, none).
 5. Estimating the goal completion probability (Noul) indicating whether the user's goal has been fully achieved.
+6. Using the ACTION HISTORY (if provided) to understand what has already been done, avoid repeating failed actions, and decide the next logical step toward completing the goal.
 
 All outputs are strictly predefined discrete choices and probabilities. You do NOT generate free text."""
 
@@ -158,11 +159,12 @@ def build_jev_state(
     user_prompt: str,
     ui_tree: Dict[str, Any],
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
-    context_notes: str = ""
+    action_history: str = ""
 ) -> str:
     """
     Assembles the full atomic state string provided to Jev.
-    Combines system prompt instructions, user prompt, and formatted micro-tree.
+    Combines system prompt instructions, user prompt, formatted micro-tree,
+    and recent action history so Jev knows what has already been done.
     """
     formatted_tree = format_tree_text(ui_tree)
     root_name = ui_tree.get("name") or "Root Desktop"
@@ -181,8 +183,9 @@ Root: {root_type} "{root_name}" | UI Candidates: {candidates_count}
 [CURRENT UI MICRO-TREE]
 {formatted_tree}
 """
-    if context_notes:
-        state += f"\n[CONTEXT NOTES]\n{context_notes.strip()}\n"
+    if action_history:
+        state += f"\n[ACTION HISTORY (most recent last)] {action_history.strip()}"
+
 
     return state.strip()
 
@@ -213,7 +216,7 @@ class JevClient:
         user_prompt: str,
         ui_tree: Dict[str, Any],
         system_prompt: Optional[str] = None,
-        context_notes: str = ""
+        action_history: str = ""
     ) :
         """
         Submits the UI tree, user input, and system prompt to Jev.
@@ -224,7 +227,7 @@ class JevClient:
             user_prompt=user_prompt,
             ui_tree=ui_tree,
             system_prompt=active_system_prompt,
-            context_notes=context_notes
+            action_history=action_history
         )
 
         candidates_criteria, node_lookup = build_candidate_options(ui_tree)

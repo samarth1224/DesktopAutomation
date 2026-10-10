@@ -43,6 +43,7 @@ from jev import JevClient, build_candidate_options
 MAX_STEPS = 30                # Safety limit – avoid infinite loops
 STEP_DELAY_SECONDS = 0.6      # Pause between steps so the UI can settle
 UI_SETTLE_DELAY = 0.4          # Extra wait after certain actions (click, set_text, …)
+MAX_HISTORY_STEPS = 10         # Number of recent actions to send as memory to Jev
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -53,6 +54,55 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("executor")
+
+
+# ============================================================================
+# Action History Formatter
+# ============================================================================
+
+def format_action_history(step_history: list, max_entries: int = MAX_HISTORY_STEPS) -> str:
+    """
+    Format the last *max_entries* step records into a compact text block
+    that Jev can use as memory of what has already been done.
+
+    Each line looks like:
+        Step 3: click → #5 ('Save') ✓
+        Step 4: set_text → #8 ('Search') ✗ (failed)
+    """
+    if not step_history:
+        return ""
+
+    recent = step_history[-max_entries:]
+    lines = []
+    for rec in recent:
+        # Skip error-only entries (no action was chosen)
+        if "error" in rec and "action" not in rec:
+            lines.append(f"Step {rec['step']}: ⚠ error – {rec['error']}")
+            continue
+
+        step_num = rec.get("step", "?")
+        action = rec.get("action", "?")
+        target_id = rec.get("target_id", "?")
+        target_name = rec.get("target_name", "")
+        executed = rec.get("executed", None)
+
+        # Build target display
+        if target_name:
+            target_display = f"{target_id} ('{target_name}')"
+        else:
+            target_display = target_id
+
+        # Result indicator
+        if executed is True:
+            result = "✓"
+        elif executed is False:
+            result = "✗ (failed)"
+        else:
+            result = ""
+
+        lines.append(f"Step {step_num}: {action} → {target_display} {result}".rstrip())
+
+    return "\n".join(lines)
 
 
 # ============================================================================
@@ -341,8 +391,14 @@ def run_automation(
         log.info(f"🌳 UI Tree (Sending to Jev):\n{tree_text}\n")
 
         # ----- 1. Ask Jev for a decision -----
+        # Build action history from the last N steps so Jev knows what's been done
+        history_text = format_action_history(step_history)
         try:
-            result = client.decide(user_prompt=user_prompt, ui_tree=ui_tree)
+            result = client.decide(
+                user_prompt=user_prompt,
+                ui_tree=ui_tree,
+                action_history=history_text,
+            )
         except Exception as exc:
             log.error(f"Jev decision failed: {exc}")
             step_history.append({"step": step, "error": str(exc)})
