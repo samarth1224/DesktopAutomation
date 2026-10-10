@@ -315,6 +315,9 @@ def fetch_next_ui_tree(
 
     elif next_tree_action == "refresh_current_window":
         ctrl = current_root_control or auto.GetRootControl()
+        if not ctrl.Exists(maxSearchSeconds=0):
+            log.warning("Cannot refresh current window – target not found. Falling back to desktop.")
+            ctrl = auto.GetRootControl()
         log.info(f"🔄 Next tree: refresh_current_window → '{ctrl.Name}'")
         tree = get_component_tree(ctrl, max_depth=depth)
         return tree, ctrl
