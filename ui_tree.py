@@ -14,6 +14,9 @@ import argparse
 from typing import List, Dict, Any, Optional
 import uiautomation as auto
 
+# Disable uiautomation's default file logging (@AutomationLog.txt)
+auto.Logger.SetLogFile("")
+
 try:
     import win32gui
     import win32process
@@ -409,11 +412,6 @@ def main():
         action="store_true", 
         help="Include zero-area / hidden controls."
     )
-    parser.add_argument(
-        "-o", "--output", 
-        type=str, 
-        help="Save output to the specified file path."
-    )
 
     args = parser.parse_args()
 
@@ -453,12 +451,6 @@ def main():
         result_text = f"{header}\n{format_tree_text(tree_data)}\n" + f"=" * 60
 
     print(result_text)
-
-    # Optionally save to file
-    if args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
-            f.write(result_text)
-        print(f"\nTree saved to: {args.output}")
 
 
 if __name__ == "__main__":

@@ -20,6 +20,9 @@ from typing import Dict, Any, Optional
 
 import uiautomation as auto
 
+# Disable uiautomation's default file logging (@AutomationLog.txt)
+auto.Logger.SetLogFile("")
+
 # ---------------------------------------------------------------------------
 # Local imports
 # ---------------------------------------------------------------------------
