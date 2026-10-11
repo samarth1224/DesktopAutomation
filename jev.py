@@ -388,14 +388,15 @@ class JevClient:
                 probabilities={
                     "target_id": target_id,
                     "action": action,
-                    "next_ui_tree": next_tree
+                    "next_ui_tree": next_tree,
                 },
-                "noul_probability": noul_val,
-                "target_node": target_node,
-                "decision_mode": "typesafe_sdk",
-                "user_prompt": user_prompt,
-                "raw_response": getattr(response, "__dict__", str(response))
-            }
+                noul_probability=noul_val,
+                target_node=target_node,
+                decision_mode="typesafe_sdk",
+                user_prompt=user_prompt,
+                raw_response=getattr(response, "__dict__", str(response)),
+                intent=intent,
+            )
 
    
 
