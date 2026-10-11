@@ -429,7 +429,6 @@ def decide_desktop_action(
     client = JevClient(api_key=api_key, system_prompt=system_prompt)
     return client.decide(user_prompt=user_prompt, ui_tree=ui_tree)
 
-
 # ============================================================================
 # Command Line Interface (CLI)
 # ============================================================================
