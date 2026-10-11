@@ -94,6 +94,62 @@ class NextTreeAction(str, Enum):
     NONE = "none"
 
 
+class ExpectedEffect(BaseModel):
+    """The observable effect associated with one proposed action."""
+
+    kind: str = "action_selected"
+    target: Optional[Dict[str, Any]] = None
+    expected_value: Optional[object] = None
+    expected_window_title: Optional[str] = None
+    timeout_seconds: float = 3.0
+
+
+class ActionIntent(BaseModel):
+    """Validated, serializable description of the action selected by Jev."""
+
+    target_id: str
+    action: ActionType
+    parameters: Dict[str, object] = Field(default_factory=dict)
+    expected_effect: ExpectedEffect = Field(default_factory=ExpectedEffect)
+    next_tree_action: NextTreeAction
+    confidence: Optional[float] = None
+
+
+class JevDecisionResult(BaseModel):
+    """Typed result returned by :meth:`JevClient.decide`.
+
+    ``get`` is intentionally provided for compatibility with the current
+    executor while the executor is migrated to the structured contract.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Dict[str, object]
+    probabilities: Dict[str, object]
+    noul_probability: float
+    target_node: Optional[Dict[str, Any]] = None
+    decision_mode: str
+    user_prompt: str
+    raw_response: object
+    intent: ActionIntent
+
+    def get(self, key: str, default: object = None) -> object:
+        """Provide read-only mapping-style access for existing callers."""
+        return getattr(self, key, default)
+
+
+class JevError(RuntimeError):
+    """Base exception for typed Jev decision failures."""
+
+
+class JevUnavailableError(JevError):
+    """Raised when Jev cannot be contacted or no API key is configured."""
+
+
+class JevResponseError(JevError):
+    """Raised when a Jev response cannot be validated."""
+
+
 
 
 # ============================================================================
@@ -212,10 +268,10 @@ class JevClient:
         ui_tree: Dict[str, Any],
         system_prompt: Optional[str] = None,
         action_history: str = ""
-    ) :
+    ) -> JevDecisionResult:
         """
         Submits the UI tree, user input, and system prompt to Jev.
-        Returns a JevResult containing the typed JevDecision and Jev's evaluated probabilities.
+        Returns a validated decision result or raises a typed JevError.
         """
         active_system_prompt = system_prompt or self.system_prompt
         state_str = build_jev_state(
@@ -227,22 +283,26 @@ class JevClient:
 
         candidates_criteria, node_lookup = build_candidate_options(ui_tree)
 
-        # 1. Try official TypeSafe SDK if available and API key present
-        if self.api_key:
-            try:
-                print("I run")
-                response = self._call_typesafe_sdk(
-                    state=state_str,
-                    user_prompt=user_prompt,
-                    ui_tree=ui_tree,
-                    candidates_criteria=candidates_criteria,
-                    node_lookup=node_lookup
-                )
-                return response
-            except Exception as e:
-                print(f"[!] TypeSafe SDK call failed ({e}). Attempting REST API fallback...", file=sys.stderr)
+        if not self.api_key:
+            raise JevUnavailableError("TYPESAFE_API_KEY is not configured")
 
-        return "Failed to contact jev"
+        try:
+            result = self._call_typesafe_sdk(
+                state=state_str,
+                user_prompt=user_prompt,
+                ui_tree=ui_tree,
+                candidates_criteria=candidates_criteria,
+                node_lookup=node_lookup
+            )
+            if isinstance(result, JevDecisionResult):
+                return result
+            return JevDecisionResult.model_validate(result)
+        except ValidationError as exc:
+            raise JevResponseError("Jev returned a malformed decision") from exc
+        except JevError:
+            raise
+        except Exception as exc:
+            raise JevUnavailableError("TypeSafe SDK request failed") from exc
 
 
 
@@ -253,7 +313,7 @@ class JevClient:
         ui_tree: Dict[str, Any],
         candidates_criteria: Dict[str, str],
         node_lookup: Dict[str, Any]
-    ):
+    ) -> JevDecisionResult:
         """Execute decision via the official TypeSafe SDK."""
         with TypeSafeClient(api_key=self.api_key) as client:
             questions = {
@@ -296,7 +356,7 @@ class JevClient:
 
             # Extract Action
             action_ans = answers.get("action_to_take")
-            action = max(action_ans.probabilities,key = action_ans.probabilities.get)
+            action = max(action_ans.probabilities, key=action_ans.probabilities.get)
 
             # Extract Next UI Tree
             tree_ans = answers.get("next_ui_tree")
@@ -309,6 +369,13 @@ class JevClient:
             target_node = node_lookup.get(target_id)
             noul_val = float(noul_score)
 
+            intent = ActionIntent(
+                target_id=target_id,
+                action=action,
+                next_tree_action=next_tree,
+                confidence=float(action_ans.probabilities[action]),
+            )
+
             decision = {
                 "target_id" : target_id,
                 "action" : action,
@@ -316,9 +383,9 @@ class JevClient:
                 "is_goal_complete" : noul_score >= 0.60
             }
 
-            return {
-                "decision" : decision,
-                "probabilities" : {
+            return JevDecisionResult(
+                decision=decision,
+                probabilities={
                     "target_id": target_id,
                     "action": action,
                     "next_ui_tree": next_tree
