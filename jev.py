@@ -11,25 +11,20 @@ Responsibilities:
    - Action to Execute (focus, click, type/set_text, toggle, wait, finish)
    - Next UI Tree Decision (which UI tree representation Jev wants next: drill into window, refresh, return to desktop, or none)
    - Goal Completion Probability (Noul: whether the task is complete)
-3. Supports live TypeSafe AI SDK / REST API with intelligent heuristic fallback when offline.
+3. Supports the live TypeSafe AI SDK and reports typed failures when it is unavailable.
 """
 
 import os
 import sys
-import re
-import math
 import json
 import argparse
 from enum import Enum
-from typing import Dict, Any, List, Optional, Tuple, Union
-import urllib.request
-import urllib.error
+from typing import Dict, Any, Optional, Tuple
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from pydantic import BaseModel, Field, ConfigDict
-HAS_PYDANTIC = True
+from pydantic import BaseModel, Field, ConfigDict, ValidationError
 
 # Ensure current script directory is in sys.path for local module imports
 _current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -57,7 +52,7 @@ except ImportError:
         raise ImportError(f"Could not import ui_tree module: {e}")
 
 # Try importing official TypeSafe SDK
-from typesafe_sdk import TypeSafeClient, Choice, Noul, Score
+from typesafe_sdk import TypeSafeClient, Choice, Noul
 
 
 # ============================================================================
@@ -198,7 +193,7 @@ Root: {root_type} "{root_name}" | UI Candidates: {candidates_count}
 class JevClient:
     """
     Client for TypeSafe AI's Jev model specialized for Desktop Automation.
-    Manages questions, probability extraction, and fallback execution.
+    Manages questions and validated probability extraction.
     """
 
     def __init__(
@@ -207,7 +202,7 @@ class JevClient:
         base_url: Optional[str] = None,
         system_prompt: Optional[str] = None
     ):
-        self.api_key =os.getenv("TYPESAFE_API_KEY")
+        self.api_key = api_key if api_key is not None else os.getenv("TYPESAFE_API_KEY")
         self.base_url = base_url or os.getenv("TYPESAFE_API_BASE", "https://api.typesafe.ai/v1")
         self.system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
 
@@ -297,7 +292,7 @@ class JevClient:
 
             # Extract Target Selection
             target_ans = answers.get("target_selection")
-            target_id  = max(target_ans.probabilities,key = target_ans.probabilities.get)
+            target_id = max(target_ans.probabilities, key=target_ans.probabilities.get)
 
             # Extract Action
             action_ans = answers.get("action_to_take")
@@ -305,7 +300,7 @@ class JevClient:
 
             # Extract Next UI Tree
             tree_ans = answers.get("next_ui_tree")
-            next_tree = max(tree_ans.probabilities,key = tree_ans.probabilities.get)
+            next_tree = max(tree_ans.probabilities, key=tree_ans.probabilities.get)
 
             # Extract Noul Goal Completion
             noul_ans = answers.get("is_goal_complete")
@@ -348,7 +343,7 @@ def decide_desktop_action(
     window_name: Optional[str] = None,
     depth: int = 1,
     api_key: Optional[str] = None
-) -> JevResult:
+):
     """
     Convenience function that inspects the current UI tree (if not provided)
     and queries Jev for the next desktop automation decision.
